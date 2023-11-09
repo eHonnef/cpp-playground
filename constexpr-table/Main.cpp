@@ -1,47 +1,102 @@
-#include <iostream>
+#include <array>
+#include <random>
 
-template <typename t_EEnum> class CA {
+class CItem {
 public:
-  int m_nInt;
-  t_EEnum m_eLookupValue;
+    const int m_nVal;
 
-  constexpr CA() : m_nInt(0), m_eLookupValue(t_EEnum::None) {}
-  constexpr CA(int nInt, t_EEnum eLookup) : m_nInt(nInt), m_eLookupValue(eLookup) {}
-  constexpr CA(const CA &cpy) : m_nInt(cpy.m_nInt), m_eLookupValue(cpy.m_eLookupValue) {}
+//    constexpr CItem() : m_nVal(0) {}
+
+    constexpr CItem(const int nVal) : m_nVal(nVal) {}
 };
 
-template <typename t_EEnum> class CTable {
+#ifdef __cplusplus
+#if __cplusplus >= 201402L
+
+// Using the std lib
+template<typename t_EEnum, class t_cClass>
+class LUT_StdLib {
+private:
+    using TPair = std::pair<t_EEnum, t_cClass>;
+
+    static constexpr size_t m_uSize = static_cast<size_t>(t_EEnum::None);
+    std::array<TPair, m_uSize> m_arItems;
+
+//    template<std::array<TPair, m_uSize>::iterator q>
+//    static constexpr void bleh() {
+//        if constexpr (q->first == q->first) {}
+//    }
+//
+//    template<size_t N, const std::initializer_list<TPair>::iterator q>
+//    static constexpr void SanityCheck() {
+//        []<std::size_t... Is>(std::index_sequence<Is...>) {
+//            (bleh<q+Is, q+Is>(), ...);
+//        }(std::make_index_sequence<N>{});
+//    }
+
+    template<class t_cIter, size_t... t_uI>
+    constexpr LUT_StdLib(t_cIter Iter, std::index_sequence<t_uI...>)
+            : m_arItems{((void) t_uI, *Iter++)...} {}
+
+    template<size_t... t_uI>
+    constexpr LUT_StdLib(const TPair &value, std::index_sequence<t_uI...>)
+            : m_arItems{((void) t_uI, value)...} {}
+
 public:
-  static constexpr unsigned m_uSize = static_cast<unsigned>(t_EEnum::None);
-  CA<t_EEnum> m_arTable[m_uSize];
+    constexpr LUT_StdLib(const std::initializer_list<TPair> InitList) : LUT_StdLib(InitList.begin(),
+                                                                             std::make_index_sequence<m_uSize>()) {
+        //@todo: find a way to check InitList in compile time
+        //        SanityCheck<m_uSize, InitList.begin()>();
+    }
 
-  template <unsigned n, class t_CFirst, class... t_COthers>
-  inline constexpr void FillTable(const t_CFirst& First, const t_COthers&... Others) {
-    FillTable<t_COthers...>(Others...);
-    m_arTable[0] = First;
-  }
+    constexpr const t_cClass &at(const t_EEnum Index) const {
+        return m_arItems[static_cast<size_t>(Index)].second;
+    }
 
-  template <class t_CFirst, class... t_COthers>
-  inline constexpr void FillTable(const t_CFirst& First, const t_COthers&... Others) {
-    m_arTable[sizeof...(t_COthers)] = First;
-    FillTable<sizeof...(t_COthers)-1, t_CFirst, t_COthers...>(First, Others...);
-  }
-
-  template <class t_CFirst, class... t_COthers>
-  inline constexpr CTable(const t_CFirst &First, const t_COthers &...Others) {
-    FillTable<sizeof...(t_COthers) - 1, t_CFirst, t_COthers...>(First, Others...);
-  }
+    template<t_EEnum t_eIndex>
+    constexpr const t_cClass &at() const {
+        static_assert(static_cast<size_t>(t_eIndex) < m_uSize, "Out of bounds");
+        return m_arItems[static_cast<size_t>(t_eIndex)].second;
+    }
 };
+
+#endif
+#endif
 
 //------------------------------------------------
+/*
+ * template <t_EEnum, t_cClass>
+ * maps t_EEnum -> t_cClass
+ */
+//------------------------------------------------
 
-enum class ENUM { a, b, c, None };
+enum class ENUM {
+    a, b, c, d, None
+};
 
 int main() {
-  CTable<ENUM> table(CA(1, ENUM::a), CA(2, ENUM::b), CA(3, ENUM::c));
+    int rand = std::rand() % 4;
 
-  for (int i = 0; i < 3; ++i)
-    std::printf("%d\n", table.m_arTable[i].m_nInt);
+    constexpr LUT_StdLib<ENUM, CItem> LUT_stdlib{
+            {ENUM::a, CItem(0)},
+            {ENUM::b, CItem(1)},
+            {ENUM::c, CItem(2)},
+            {ENUM::d, CItem(3)}
+    };
 
-  return 0;
+    [[maybe_unused]] int x = 100;
+
+    if (LUT_stdlib.at(ENUM::a).m_nVal == rand) {
+        x += LUT_stdlib.at<ENUM::c>().m_nVal;
+    }
+    if (LUT_stdlib.at<ENUM::b>().m_nVal == rand) {
+        x += LUT_stdlib.at<ENUM::c>().m_nVal;
+    }
+
+    static_assert(LUT_stdlib.at(ENUM::a).m_nVal == 0);
+    static_assert(LUT_stdlib.at(ENUM::b).m_nVal != 0);
+    static_assert(LUT_stdlib.at<ENUM::c>().m_nVal == 2);
+    static_assert(LUT_stdlib.at<ENUM::d>().m_nVal != 2);
+
+    return 0;
 }
